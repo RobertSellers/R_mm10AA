@@ -1,0 +1,544 @@
+---
+title: "RRBS Methylation Procedure in R"
+author: 'Author: '
+date: "July 21, 2017"
+output:
+  html_document:
+    highlight: pygments
+    theme: united
+    toc: yes
+    toc_depth: 2
+    fig_width : 6.5
+    fig_height : 4
+    toc_float:
+      collapsed: yes
+      number_sections: yes
+      smooth_scroll: no
+
+---
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+#Set working directory
+wdA <- 'C:/Users/Robert/Desktop/mm10AA'
+#wdB <- '/Users/swanze01/Desktop/mm10AA'
+setwd(wdA);rm(wdA,wdB)
+
+#Load local helpers
+source('scripts/environments.R'); loadWorkspace()
+source('scripts/visualizations.R')
+source('scripts/custom_functions.R')
+
+#Bed file downloads
+gene.parts = readTranscriptFeatures("bed/RefSeqGenesmm10.bed")
+refGenome = read.table("bed/refGene.txt", sep="\t")
+cpg.obj = readFeatureFlank("bed/CpGislandmm10.bed", feature.flank.name = c("CpGi","shores"))
+
+#example
+res_list = readRDS("meth.rds")
+
+```
+
+# Experimental Data Management
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+
+male.control <- list("test1","test2","test3","ctrl7","ctrl8","ctrl9")
+female.control <- list("test4","test5","test6","ctrl10","ctrl11","ctrl12")
+all.control <- append(male.control, female.control)
+
+plus.minus.split <- c(1,1,1,0,0,0)
+plus.minus.all <- c(1,1,1,0,0,0,1,1,1,0,0,0)
+
+male.file.list <- list("data/cpg_MS1_mincov10.txt","data/cpg_MS2_mincov10.txt","data/cpg_MS3_mincov10.txt","data/cpg_MS7_mincov10.txt","data/cpg_MS8_mincov10.txt","data/cpg_MS9_mincov10.txt")
+
+female.file.list <- list("data/cpg_MS4_mincov10.txt","data/cpg_MS5_mincov10.txt","data/cpg_MS6_mincov10.txt","data/cpg_MS10_mincov10.txt","data/cpg_MS11_mincov10.txt","data/cpg_MS12_mincov10.txt")
+
+all.file.list <- append(male.file.list, female.file.list)
+
+destfile <- "./save/male.rds"
+if(!file.exists(destfile)){
+  male <- methRead(male.file.list,sample.id=male.control,assembly="mm10",treatment=plus.minus.split,context="CpG")
+  saveRDS(male, destfile)
+}else{
+  male<-readRDS(destfile)
+}
+
+destfile <- "./save/female.rds"
+if(!file.exists(destfile)){
+  female <- methRead(female.file.list,sample.id=female.control,assembly="mm10",treatment=plus.minus.split,context="CpG")
+  saveRDS(female, destfile)
+}else{
+  female<-readRDS(destfile)
+}
+
+destfile <- "./save/all.rds"
+if(!file.exists(destfile)){
+  all <- methRead(all.file.list,sample.id=all.control,assembly="mm10",treatment=plus.minus.all,context="CpG")
+  saveRDS(all, destfile)
+}else{
+  all<-readRDS(destfile)
+}
+
+rm(male.control, female.control, all.control, plus.minus.split, plus.minus.all, male.file.list, female.file.list, all.file.list)
+```
+
+The following method uses __methylKit__, __genomation__, __GenomicRanges__, __BSgenome.Mmusculus.UCSC.mm10.masked__, and __ggbio__ libraries available from http://www.bioconductor.org/biocLite.R.
+
+_____
+
+# Quality Control
+
+Plot histogram for percent methylation distribution (this is for test2) numbers on the bars denote what percentage of locations are contained in that bin.
+
+```{r}
+
+getMethylationStats(all[[2]], plot=T, both.strands = F)
+getMethylationStats(male[[2]], plot=T, both.strands = F)
+getMethylationStats(female[[2]], plot=T, both.strands = F)
+
+```
+
+_____
+# Data Processing
+
+## Filter and Normalize Samples
+
+1. Filter samples based on coverage and discards bases with coverage below 10x and also discards bases that have more than 99.9th percentile of coverage in each sample.
+
+2. Normalize coverage to reduce statistical bias.
+
+```{r}
+
+male.filt.norm <- filterAndNormalize(male)
+female.filt.norm <- filterAndNormalize(female)
+all.filt.norm <- filterAndNormalize(all)
+
+```
+
+_____
+
+## Merge Samples
+
+Merges all samples into one object for base-pair locations that are covered in all samples.
+
+```{r}
+
+male.filt.norm.meth <- mergeAndMethylate(male.filt.norm)
+female.filt.norm.meth <- mergeAndMethylate(female.filt.norm)
+all.filt.norm.meth <- mergeAndMethylate(all.filt.norm)
+
+```
+_____
+
+# Statistical Analysis
+
+## Correlation
+
+```{r}
+
+#getCorrelation(male.filt.norm.meth,plot=T)
+#getCorrelation(female.filt.norm.meth,plot=T)
+#getCorrelation(all.filt.norm.meth,plot=T)
+
+```
+
+_____
+
+## Hierarchical clustering
+
+```{r}
+
+clusterSamples(male.filt.norm.meth,dist="correlation",method="ward",plot=TRUE)
+clusterSamples(female.filt.norm.meth,dist="correlation",method="ward",plot=TRUE)
+clusterSamples(all.filt.norm.meth,dist="correlation",method="ward",plot=TRUE)
+
+```
+
+_____
+
+## PCA Analysis
+
+```{r}
+
+#PCASamples(male.filt.norm.meth)
+#PCASamples(female.filt.norm.meth)
+#PCASamples(all.filt.norm.meth)
+
+```
+
+_____
+
+# Differential methylation
+
+```{r}
+
+destfile="./save/male_diff.rds" 
+if(!file.exists(destfile)){
+  male.diff <- calculateDiffMeth(male.filt.norm.meth)
+  saveRDS(male.diff, destfile)
+}else{
+  male.diff<-readRDS(destfile)
+}
+
+
+destfile="./save/female_diff.rds" 
+if(!file.exists(destfile)){
+  female.diff <- calculateDiffMeth(female.filt.norm.meth)
+  saveRDS(female.diff , destfile)
+}else{
+  female.diff <-readRDS(destfile)
+}
+
+destfile="./save/all_diff.rds" 
+if(!file.exists(destfile)){
+  all.diff <- calculateDiffMeth(all.filt.norm.meth)
+  saveRDS(all.diff, destfile)
+}else{
+  all.diff <- readRDS(destfile)
+}
+
+```
+
+_____
+
+## Differentially Methylated Bases
+
+```{r}
+
+#male
+male.diff.25p = getMethylDiff(male.diff, difference = 25, qvalue = 0.01)
+male.diff.30p = getMethylDiff(male.diff, difference = 30, qvalue = 0.01)
+male.diff.35p = getMethylDiff(male.diff, difference = 35, qvalue = 0.01)
+male.diff.40p = getMethylDiff(male.diff, difference = 40, qvalue = 0.01)
+male.diff.45p = getMethylDiff(male.diff, difference = 45, qvalue = 0.01)
+male.diff.50p = getMethylDiff(male.diff, difference = 50, qvalue = 0.01)
+
+#female
+female.diff.25p = getMethylDiff(female.diff, difference = 25, qvalue = 0.01)
+female.diff.30p = getMethylDiff(female.diff, difference = 30, qvalue = 0.01)
+female.diff.35p = getMethylDiff(female.diff, difference = 35, qvalue = 0.01)
+female.diff.40p = getMethylDiff(female.diff, difference = 40, qvalue = 0.01)
+female.diff.45p = getMethylDiff(female.diff, difference = 45, qvalue = 0.01)
+female.diff.50p = getMethylDiff(female.diff, difference = 50, qvalue = 0.01)
+
+#all
+all.diff.25p = getMethylDiff(all.diff, difference = 25, qvalue = 0.01)
+all.diff.30p = getMethylDiff(all.diff, difference = 30, qvalue = 0.01)
+all.diff.35p = getMethylDiff(all.diff, difference = 35, qvalue = 0.01)
+all.diff.40p = getMethylDiff(all.diff, difference = 40, qvalue = 0.01)
+all.diff.45p = getMethylDiff(all.diff, difference = 45, qvalue = 0.01)
+all.diff.50p = getMethylDiff(all.diff, difference = 50, qvalue = 0.01)
+
+```
+
+_____
+
+## Differential method visualization
+
+Visualize the distribution of hypo/hyper-methylated bases/regions per chromosome if plot=FALSE, it will show a list per chromosome differentially methylated events will be returned.
+
+```{r}
+
+diffMethPerChr(male.diff, plot = TRUE, qvalue.cutoff = 0.01, meth.cutoff = 25)
+diffMethPerChr(female.diff, plot = TRUE, qvalue.cutoff = 0.01, meth.cutoff = 25)
+diffMethPerChr(all.diff, plot = TRUE, qvalue.cutoff = 0.01, meth.cutoff = 25)
+
+```
+
+
+_____
+
+## Window Approach
+
+```{r}
+
+destfile <-"./save/tiles_all_500_50_5.rds"
+if(!file.exists(destfile)){
+  tiles.all <- tileMethylCounts(all.filt.norm, 500, 50, 5)
+  saveRDS(tiles.all, destfile)
+}else{
+  tiles.all<-readRDS(destfile)
+}
+
+methtiles.all <- methylKit::unite(tiles.all, destrand = FALSE)
+
+destfile <- "./save/tiles_diffMeth_all_500_50_5.rds" 
+if(!file.exists(destfile)){
+  tiles.diffMeth.all <- calculateDiffMeth(methtiles.all)
+  saveRDS(tiles.diffMeth.all, destfile)
+}else{
+  tiles.diffMeth.all<-readRDS(destfile)
+}
+
+```
+
+## Output
+
+```{r}
+
+tiles.diffMeth.all.25p <- getMethylDiff(tiles.diffMeth.all,difference=25,qvalue=0.01)
+
+write.table(tiles.diffMeth.all.25p,file="output/tiles_diffMeth_all_500_50_5_25p.txt",append=FALSE,quote=FALSE,sep="\t", eol = "\n", na = "NA",dec = ".", row.names = FALSE, col.names = TRUE, qmethod = c("escape", "double"), fileEncoding = "")
+
+diffMethPerChr(tiles.diffMeth.all, plot = TRUE, qvalue.cutoff = 0.01, meth.cutoff = 25)
+
+tiles.diffMeth.all.25p.gRange <- as(tiles.diffMeth.all.25p,"GRanges")
+
+tiles.diffMeth.all.25p.gRange.annot <- annotateWithGeneParts(tiles.diffMeth.all.25p.gRange, gene.parts, intersect.chr = TRUE)
+
+df.gene.lookup <- getAssociationWithTSS(tiles.diffMeth.all.25p.gRange.annot)
+
+write.table(df.gene.lookup,file = "output/tiles_diffMeth_all_500_50_5_25p_anno.txt", append = FALSE,quote = FALSE,sep = "\t", eol = "\n",na="NA",dec = ".",row.names = FALSE, col.names = TRUE, qmethod = c("escape", "double"), fileEncoding = "")
+
+```
+
+_____
+
+# Annotation and CpG island 
+
+```{r}
+
+#25 & 50 male
+annotateRefSymbol(male.diff.25p, gene.parts, cpg.obj, 25)
+annotateRefSymbol(male.diff.25p, gene.parts, cpg.obj, 50)
+
+#25 & 50 female
+annotateRefSymbol(female.diff.25p, gene.parts, cpg.obj, 25)
+annotateRefSymbol(female.diff.25p, gene.parts, cpg.obj, 50)
+
+#25 & 50 all
+annotateRefSymbol(all.diff.25p, gene.parts, cpg.obj, 25)
+annotateRefSymbol(all.diff.25p, gene.parts, cpg.obj, 50)
+
+```
+
+```{r}
+#annotate CpGi control
+CpG.Cont.gRange = as(all.filt.norm.meth, "GRanges")
+CpGann.Cont = annotateWithFeatureFlank(CpG.Cont.gRange, cpg.obj$CpGi,
+                                      cpg.obj$shores,
+                                      feature.name = "CpGi",
+                                      flank.name = "shores")
+genomation::getTargetAnnotationStats(CpGann.Cont, percentage = TRUE, precedence = TRUE)
+genomation::plotTargetAnnotation(CpGann.Cont, precedence = TRUE, main = "CpGi 5mC (control)")
+
+#annotate genes control
+#Genes.Cont.gRange = as(meth[1], "GRanges")
+#Genes.Cont.gRange.annot = annotateWithGeneParts(Genes.Cont.gRange, gene.parts, intersect.chr = TRUE)
+#getTargetAnnotationStats(Genes.Cont.gRange.annot, percentage = TRUE,precedence = TRUE)
+#plotTargetAnnotation(Genes.Cont.gRange.annot, precedence = TRUE, main = "Gene 5mC (control)")
+
+
+```
+
+_____
+
+## Circos Idiogram
+
+```{r}
+chr.len <- seqlengths(Mmusculus)
+chr.len <- chr.len[grep("_|M", names(chr.len), invert = T)] 
+ideoDMC(all.diff,chr.len,difference=30,qvalue = 0.01, 
+        circos = TRUE, title = "Differential bases > 30%", hyper.col = "magenta",hypo.col = "green")
+```
+
+## Heatmap
+
+```{r}
+#Merge and create lookup gene values
+df.gene.interval.anno <- cbind(df.gene.lookup,tiles.diffMeth.all.25p)
+names(refGenome)[names(refGenome) == 'V2'] <- 'feature.name'
+names(refGenome)[names(refGenome) == 'V13'] <- 'geneSymbol'
+df.gene.interval.anno.joined <- left_join(df.gene.interval.anno, refGenome, by = "feature.name")
+
+minJoin <- aggregate(start ~ geneSymbol + chr, df.gene.interval.anno.joined, min)
+maxJoin <- aggregate(end ~ geneSymbol + chr, df.gene.interval.anno.joined, max)
+lookup.tile.ranges <- merge(minJoin, maxJoin)
+
+#### may want to change this
+type = c(rep("Experimental", 6), rep("Control", 6))
+
+gr0 = with(all.filt.norm.meth, GRanges(chr, IRanges(start, end)))
+gr1 = with(lookup.tile.ranges, GRanges(chr, IRanges(start, end)))
+hits = findOverlaps(gr0, gr1)
+
+hits.df<-as.data.frame(cbind(queryHits(hits),subjectHits(hits)))
+colnames(hits.df) <- c("index","geneIndex")
+formerge <- tibble::rownames_to_column(all.filt.norm.meth, "index")
+
+
+hits.df.filled <- data.frame(
+  chr = formerge$chr, 
+  index = formerge$index,
+  start = formerge$start,
+  end = formerge$end,
+  sample1 = formerge$numCs1/formerge$coverage1,
+  sample2 = formerge$numCs2/formerge$coverage2,
+  sample3 = formerge$numCs3/formerge$coverage3,
+  sample4 = formerge$numCs4/formerge$coverage4,
+  sample5 = formerge$numCs5/formerge$coverage5,
+  sample6 = formerge$numCs6/formerge$coverage6,
+  sample7 = formerge$numCs7/formerge$coverage7,
+  sample8 = formerge$numCs8/formerge$coverage8,
+  sample9 = formerge$numCs9/formerge$coverage9,
+  sample10 = formerge$numCs10/formerge$coverage10,
+  sample11 = formerge$numCs11/formerge$coverage11,
+  sample12 = formerge$numCs12/formerge$coverage12
+  )
+
+hits.df.merged<-merge(hits.df, y = hits.df.filled, by = "index", all.x = TRUE)
+
+hits.df.merged.avg<-hits.df.merged %>%
+  group_by(geneIndex) %>%
+  summarise_all(funs(mean(., na.rm = TRUE)))
+######################################
+# generate methylation matrix
+mat_meth <- data.matrix(hits.df.merged.avg[2:ncol(hits.df.merged.avg)])[,-c(1:4)]
+```
+```{r}
+
+#mat_meth = t(mat_meth)
+rownames(mat_meth) = NULL
+colnames(mat_meth) = paste0("sample", 1:12)
+
+######################################
+# generate directions for methylation
+direction = rowMeans(mat_meth[, 1:6]) - rowMeans(mat_meth[, 7:12])
+direction = ifelse(direction > 0, "hyper", "hypo")
+
+#######################################
+# generate expression matrix
+mat_expr = t(apply(mat_meth, 1, function(x) {
+    x = x + rnorm(length(x), sd = (runif(1)-0.5)*0.4 + 0.5)
+    -scale(x)
+}))
+dimnames(mat_expr) = dimnames(mat_meth)
+
+#############################################################
+# matrix for correlation between methylation and expression
+cor_pvalue = -log10(sapply(seq_len(nrow(mat_meth)), function(i) {
+    cor.test(mat_meth[i, ], mat_expr[i, ])$p.value
+}))
+
+#####################################################
+# matrix for types of genes
+gene_type = sample(c("protein_coding", "lincRNA", "microRNA", "psedo-gene", "others"), 
+    nrow(mat_meth), replace = TRUE, prob = c(6, 1, 1, 1, 1))
+
+#################################################
+# generate methylation matrix
+rand_meth = function(k, mean) {
+    (runif(k) - 0.5)*min(c(1-mean), mean) + mean
+}
+
+# annotation to genes
+mean_meth = c(rand_meth(40, 0.3), rand_meth(25, 0.7))
+anno_gene = sapply(mean_meth, function(m) {
+    if(m > 0.6) {
+        if(runif(1) < 0.8) return("intragenic")
+    }
+    if(m < 0.4) {
+        if(runif(1) < 0.4) return("TSS")
+    }
+    return("intergenic")
+})
+
+############################################
+# distance to genes
+dist = sapply(mean_meth, function(m) {
+    if(m < 0.6) {
+        if(runif(1) < 0.8) return(round( (runif(1)-0.5)*1000000 + 500000 ))
+    }
+    if(m < 0.3) {
+        if(runif(1) < 0.4) return(round( (runif(1) - 0.5)*1000 + 500))
+    }
+    return(round( (runif(1) - 0.5)*100000 + 50000))
+})
+
+
+#######################################
+# annotation to enhancers
+rand_enhancer = function(m) {
+    if(m < 0.4) {
+        if(runif(1) < 0.6) return(runif(1))
+    } else if (runif(1) < 0.1) {
+        return(runif(1))
+    } 
+    return(0)
+}
+anno_enhancer_1 = sapply(mean_meth, rand_enhancer)
+anno_enhancer_2 = sapply(mean_meth, rand_enhancer)
+anno_enhancer_3 = sapply(mean_meth, rand_enhancer)
+anno_enhancer = data.frame(enhancer_1 = anno_enhancer_1, enhancer_2 = anno_enhancer_2, enhancer_3 = anno_enhancer_3)
+
+#################################
+# put everything into one object
+res_list = list()
+res_list$type = type
+res_list$mat_meth = mat_meth
+res_list$mat_expr = mat_expr
+res_list$direction = direction
+res_list$cor_pvalue = cor_pvalue
+res_list$gene_type = gene_type
+res_list$anno_gene = anno_gene
+res_list$dist = dist
+res_list$anno_enhancer = anno_enhancer
+saveRDS(res_list, file = "save/heatmapInput.rds")
+
+column_tree = hclust(dist(t(mat_meth)))
+```
+
+```{r}
+ht_global_opt(heatmap_legend_title_gp = gpar(fontsize = 8, fontface = "bold"), 
+    heatmap_legend_labels_gp = gpar(fontsize = 8), heatmap_column_names_gp = gpar(fontsize = 8))
+
+ha = HeatmapAnnotation(df = data.frame(type = type), 
+    col = list(type = c("Tumor" = "pink", "Control" = "royalblue")))
+ha2 = HeatmapAnnotation(df = data.frame(type = type), 
+    col = list(type = c("Tumor" = "pink", "Control" = "royalblue")), 
+    show_legend = FALSE)
+
+ht_list = Heatmap(mat_meth, name = "methylation", col = colorRamp2(c(0, 0.5, 1), c("blue", "white", "red")),
+    cluster_columns = column_tree, column_dend_reorder = FALSE, 
+    top_annotation = ha, km = 5, column_title = "Methylation", column_title_gp = gpar(fontsize = 10), 
+    row_title_gp = gpar(fontsize = 10)) +
+    Heatmap(direction, name = "direction", col = c("hyper" = "red", "hypo" = "blue")) +
+    Heatmap(mat_expr[, column_tree$order], name = "expression", 
+        col = colorRamp2(c(-2, 0, 2), c("green", "white", "red")), cluster_columns = FALSE, 
+        top_annotation = ha2, column_title = "Expression", column_title_gp = gpar(fontsize = 10)) +
+    Heatmap(cor_pvalue, name = "-log10(cor_p)", col = colorRamp2(c(0, 2, 4), c("white", "white", "red"))) +
+    Heatmap(gene_type, name = "gene type", col = structure(brewer.pal(length(unique(gene_type)), "Set3"), 
+        names = unique(gene_type))) +
+    Heatmap(anno_gene, name = "anno_gene", col = structure(brewer.pal(length(unique(anno_gene)), "Set1"), 
+        names = unique(anno_gene))) +
+    Heatmap(dist, name = "dist_tss", col = colorRamp2(c(0, 10000), c("black", "white"))) +
+    Heatmap(anno_enhancer, name = "anno_enhancer", col = colorRamp2(c(0, 1), c("white", "orange")), 
+        cluster_columns = FALSE, column_title = "Enhancer", column_title_gp = gpar(fontsize = 10))
+
+draw(ht_list, newpage = FALSE, column_title = "Comprehensive correspondence between methylation, expression and other genomic features", 
+    column_title_gp = gpar(fontsize = 12, fontface = "bold"), heatmap_legend_side = "bottom")
+```
+
+# Sources
+
+```{r}
+#http://hgdownload.cse.ucsc.edu/goldenPath/mm10/
+citation("ggbio")
+
+citEntry(
+   entry="article",
+   title = "Complex heatmaps reveal patterns and correlations in multidimensional genomic data",
+   author = personList(as.person("Zuguang Gu"),
+                       as.person("Roland Eils"),
+                       as.person("Matthias Schlesner")),
+   journal = "Bioinformatics",
+   year = 2016,
+   textVersion = "Gu, Z. (2016) Complex heatmaps reveal patterns and correlations in multidimensional genomic data. Bioinformatics."
+)
+
+citFooter("This free open-source software implements academic
+research by the authors and co-workers. If you use it,
+please support the project by citing the appropriate
+journal articles.")
+```

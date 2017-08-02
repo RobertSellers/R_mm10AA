@@ -1,0 +1,10 @@
+
+data/*
+bed/*
+output/*
+save/*
+
+!data/.gitkeep 
+!bed/.gitkeep 
+!output/.gitkeep 
+!save/.gitkeep 
