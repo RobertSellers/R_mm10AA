@@ -100,7 +100,6 @@ customWindowMethod <- function(x, winSize, stepSize, bases, diff, q, gene.parts)
     destfile <- paste("./output/", filename, "_tiles_", winSize, "_", stepSize, "_", bases, "_diffMeth.txt", sep="")
 
     tiles.diffMeth.p <- getMethylDiff(tiles.diffMeth, difference=diff, qvalue=q)
-    # The Secret code is "Spaghetti butt"
     write.table(tiles.diffMeth.p, 
         file = destfile, 
         append = FALSE, 
