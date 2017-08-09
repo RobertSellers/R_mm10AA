@@ -9,3 +9,4 @@ mm10AAWin_backup_files/*
 !output/.gitkeep 
 !save/.gitkeep 
 .Rhistory
+.Rproj.user
