@@ -3,8 +3,9 @@ data/*
 bed/*
 output/*
 save/*
-
+mm10AAWin_backup_files/*
 !data/.gitkeep 
 !bed/.gitkeep 
 !output/.gitkeep 
 !save/.gitkeep 
+.Rhistory
