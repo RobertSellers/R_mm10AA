@@ -1,0 +1,422 @@
+---
+title: "RRBS Methylation Procedure in R"
+author: 'Author: Emily Swanzey'
+date: "August 8, 2017"
+output:
+  html_document:
+    highlight: monochrome
+    theme: flatly
+    code_folding: hide
+    toc: yes
+    toc_depth: 2
+    toc_float:
+      collapsed: yes
+      number_sections: yes
+      smooth_scroll: no
+
+---
+
+# Initilization
+
+## Environments
+
++ [Custom Code (Github Repository)](https://github.com/RobertSellers/R_mm10AA)
++ [methylKit](https://bioconductor.org/packages/release/bioc/html/methylKit.html)
++ [complexHeatmap](https://bioconductor.org/packages/release/bioc/html/ComplexHeatmap.html)
++ [genomation](https://bioconductor.org/packages/release/bioc/html/ComplexHeatmap.html)
++ [ggbio](https://bioconductor.org/packages/release/bioc/html/ggbio.html)
++ [BSgenome.Mmusculus.UCSC.mm10.masked](https://bioconductor.org/packages/release/data/annotation/html/BSgenome.Mmusculus.UCSC.mm10.masked.html)
++ [GenomicRanges](https://bioconductor.org/packages/release/bioc/html/GenomicRanges.html)
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+setwd("C:/Users/Robert/Desktop/R_mm10AA")
+source('scripts/environments.R'); loadWorkspace()
+source('scripts/visualizations.R')
+source('scripts/custom_functions.R')
+```
+
+## Complementary data files
+
++ RefSeqGenesmm10.bed: [https://genome.ucsc.edu/](https://genome.ucsc.edu/)
++ CpGislandmm10.bed: [https://genome.ucsc.edu/](https://genome.ucsc.edu/)
++ refGene.txt: [http://hgdownload.cse.ucsc.edu/goldenPath/mm10/](http://hgdownload.cse.ucsc.edu/goldenPath/mm10/)
++ GSM2071581_ENCFF226NCD_transcript_quantifications_mm10.tsv: [https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2071581](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2071581)
+
+Using __readTranscriptFeatures__ and __readFeatureFlank__ functions from the _genomation_ library, the gene and flank data are loaded (be more specific), respectively. 
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+gene.parts = readTranscriptFeatures("bed/RefSeqGenesmm10.bed")
+refGenome = read.table("bed/refGene.txt", sep="\t")
+cpg.obj = readFeatureFlank("bed/CpGislandmm10.bed", feature.flank.name = c("CpGi","shores"))
+#Load 
+rna.seq.mm10 <-read.table(file = 'bed/GSM2071581_ENCFF226NCD_transcript_quantifications_mm10.tsv', sep = '\t', header = TRUE)
+```
+
+## Loading the experiment
+
+The following code uses __methRead__ function to construct male, female, and all __methylRaw__ objects for analysis.
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+male.control <- list("test1","test2","test3","ctrl7","ctrl8","ctrl9")
+female.control <- list("test4","test5","test6","ctrl10","ctrl11","ctrl12")
+all.control <- append(male.control, female.control)
+
+plus.minus.split <- c(1,1,1,0,0,0)
+plus.minus.all <- c(1,1,1,0,0,0,1,1,1,0,0,0)
+
+male.file.list <- list("data/cpg_MS1_mincov10.txt","data/cpg_MS2_mincov10.txt","data/cpg_MS3_mincov10.txt","data/cpg_MS7_mincov10.txt","data/cpg_MS8_mincov10.txt","data/cpg_MS9_mincov10.txt")
+
+female.file.list <- list("data/cpg_MS4_mincov10.txt","data/cpg_MS5_mincov10.txt","data/cpg_MS6_mincov10.txt","data/cpg_MS10_mincov10.txt","data/cpg_MS11_mincov10.txt","data/cpg_MS12_mincov10.txt")
+
+all.file.list <- append(male.file.list, female.file.list)
+
+destfile <- "./save/male.rds"
+if(!file.exists(destfile)){
+  male <- methRead(male.file.list, sample.id=male.control, assembly="mm10", treatment=plus.minus.split, context="CpG")
+  saveRDS(male, destfile)
+}else{
+  male<-readRDS(destfile)
+}
+
+destfile <- "./save/female.rds"
+if(!file.exists(destfile)){
+  female <- methRead(female.file.list, sample.id=female.control, assembly="mm10", treatment=plus.minus.split, context="CpG")
+  saveRDS(female, destfile)
+}else{
+  female<-readRDS(destfile)
+}
+
+destfile <- "./save/all.rds"
+if(!file.exists(destfile)){
+  all <- methRead(all.file.list, sample.id=all.control, assembly="mm10", treatment=plus.minus.all, context="CpG")
+  saveRDS(all, destfile)
+}else{
+  all<-readRDS(destfile)
+}
+
+rm(male.control, female.control, all.control, plus.minus.split, male.file.list, female.file.list, all.file.list)
+```
+
+The treatment sequence on all is `r all@treatment`. The resulting dimensions for all are `r dim(all[[1]])`
+
+## Configuring genome sequences
+
+Utilizing the _BSgenome.Mmusculus.UCSC.mm10 _ package to extract the Full genome sequences for Mus musculus (Mouse) as provided by UCSC (mm10, Dec. 2011) and stored in Biostrings objects. This is especially useful for the ideograms.
+
+```{r}
+chr.len <- seqlengths(Mmusculus)
+chr.len <- chr.len[grep("_|M", names(chr.len), invert = T)] 
+```
+
+---
+
+## Quality Control
+
+The following are two _methylKit_ plot histograms for percent methylation distribution numbers and CpG coverage for Control 1 to Experiment 7.
+
+### % CpG Methylation
+
+```{r}
+par(mfrow=c(1,2))
+getMethylationStats(all[[1]], plot=T, both.strands = F, labels = FALSE)
+getMethylationStats(all[[7]], plot=T, both.strands = F, labels = FALSE)
+```
+
+### CpG coverage
+
+```{r}
+par(mfrow=c(1,2))
+getCoverageStats(all[[1]], plot=T, both.strands = F, labels = TRUE)
+getCoverageStats(all[[7]], plot=T, both.strands = F, labels = TRUE)
+```
+
+---
+
+# Data Processing
+
+## Filter and Normalize Samples
+
+Using __filterByCoverage__, we filter samples based on coverage and discards bases with coverage below 10x and also discards bases that have more than 99.9th percentile of coverage in each sample. Furthermore, using __normalizeCoverage__ we normalize coverage to reduce statistical bias. Please follow [this link](https://github.com/RobertSellers/R_mm10AA/blob/master/scripts/custom_functions.R) to view the function contents.
+
+```{r}
+male.filt.norm <- filterAndNormalize(male, 10, 99.9)
+female.filt.norm <- filterAndNormalize(female, 10, 99.9)
+all.filt.norm <- filterAndNormalize(all, 10, 99.9)
+```
+
+---
+
+## Merge Samples
+
+Using __unite__, we merge all samples into one object for base-pair locations that are covered in all samples. Please follow [this link](https://github.com/RobertSellers/R_mm10AA/blob/master/scripts/custom_functions.R) to view the function contents.
+
+```{r}
+male.filt.norm.meth <- mergeAndMethylate(male.filt.norm)
+female.filt.norm.meth <- mergeAndMethylate(female.filt.norm)
+all.filt.norm.meth <- mergeAndMethylate(all.filt.norm)
+```
+
+---
+
+# Statistical Analysis
+
+## Correlation
+
+Using __getCorrelation__ we return a matrix of correlation coefficients.
+
+```{r}
+getCorrelation(all.filt.norm.meth, plot=F)
+```
+
+---
+
+## Hierarchical clustering
+
+Using __clusterSamples__ we return a matrix of correlation coefficients using the __hclust__ function "and various distance metrics derived from percent methylation per base or per region for each sample".
+
+```{r messages=FALSE, warnings=FALSE}
+clusterSamples(all.filt.norm.meth,dist="correlation", method="ward",plot=TRUE)
+```
+
+## PCA Analysis
+
+The __PCASamples__ does a PCA analysis using the __prcomp__ function using percent methylation matrix as an input.
+
+```{r messages=FALSE, warnings=FALSE}
+par(mfrow=c(1,3))
+PCASamples(male.filt.norm.meth)
+PCASamples(female.filt.norm.meth)
+PCASamples(all.filt.norm.meth)
+```
+
+---
+
+# Differential methylation method
+
+To be compared with the upcoming Window Method, the differential methylation method initially utilizes the __calculateDiffMeth__ from _methylKit_ which calculates differential methylation statistics between two groups of samples. The following perhaps this function on our united & base-paired samples. Furthermore, the __getMethylDiff__ function is performed per gender at varying methylation thresholds. Please follow [this link](https://github.com/RobertSellers/R_mm10AA/blob/master/scripts/custom_functions.R) to view the function contents.
+
+Visualizations include the distribution of hypo/hyper-methylated bases/regions per chromosome if plot=FALSE, it will show a list per chromosome differentially methylated events will be returned.
+
+## Male
+
+```{r messages=FALSE, warnings=FALSE}
+par(mfrow=c(1,2))
+seqVals.male <- suppressWarnings(diffMethSequence(male.filt.norm.meth, 0.01))
+```
+
+## Female
+
+```{r messages=FALSE, warnings=FALSE}
+par(mfrow=c(1,2))
+seqVals.female <- suppressWarnings(diffMethSequence(female.filt.norm.meth, 0.01))
+```
+
+## All
+
+```{r messages=FALSE, warnings=FALSE}
+par(mfrow=c(1,2))
+seqVals.all <- suppressWarnings(diffMethSequence(all.filt.norm.meth, 0.01))
+```
+
+---
+
+## Idiogram comparison
+
+Using __layout_circle__ function with _ggbio_ and _ggplot2_ packages, we can display the idiograms per group. Please follow [this link](https://github.com/RobertSellers/R_mm10AA/blob/master/scripts/custom_functions.R) to view the function contents.
+
+### Male
+
+```{r messages=FALSE, warnings=FALSE}
+suppressWarnings(ideoDMC(seqVals.male$diff,chr.len,difference=30,qvalue = 0.01, 
+        title = "Differential bases > 30%", hyper.col = "magenta",hypo.col = "green"))
+```
+
+### Female
+
+```{r messages=FALSE, warnings=FALSE}
+suppressWarnings(ideoDMC(seqVals.female$diff,chr.len,difference=30,qvalue = 0.01, 
+        title = "Differential bases > 30%", hyper.col = "magenta",hypo.col = "green"))
+```
+
+
+### All
+
+```{r messages=FALSE, warnings=FALSE}
+suppressWarnings(ideoDMC(seqVals.all$diff,chr.len,difference=30,qvalue = 0.01, 
+        title = "Differential bases > 30%", hyper.col = "magenta",hypo.col = "green"))
+```
+
+## Annotation and CpG island 
+
+Using __annotateWithGeneParts__, __getTargetAnnotationStats__, & __plotTargetAnnotation__ functions of the _genomation_ package, we can annotate. Please follow [this link](https://github.com/RobertSellers/R_mm10AA/blob/master/scripts/custom_functions.R) to view the function contents.
+
+### Male
+
+```{r messages=FALSE, warnings=FALSE}
+par(mfrow=c(2,2))
+#25 & 50 male
+suppressWarnings(annotateRefSymbol(seqVals.male$diffs$diff25p, gene.parts, cpg.obj, 25))
+suppressWarnings(annotateRefSymbol(seqVals.male$diffs$diff25p, gene.parts, cpg.obj, 50))
+```
+
+### Female
+
+```{r messages=FALSE, warnings=FALSE}
+par(mfrow=c(2,2))
+#25 & 50 female
+suppressWarnings(annotateRefSymbol(seqVals.female$diffs$diff25p, gene.parts, cpg.obj, 25))
+suppressWarnings(annotateRefSymbol(seqVals.female$diffs$diff25p, gene.parts, cpg.obj, 50))
+```
+
+### All
+
+```{r messages=FALSE, warnings=FALSE}
+par(mfrow=c(2,2))
+#25 & 50 all
+suppressWarnings(annotateRefSymbol(seqVals.all$diffs$diff25p, gene.parts, cpg.obj, 25))
+suppressWarnings(annotateRefSymbol(seqVals.all$diffs$diff25p, gene.parts, cpg.obj, 50))
+```
+
+---
+
+# Window Approach
+
+The window approach selects 50 overlapping windows at 500 gene intervals using the __tileMethylCounts__, __unite__, & __calculateDiffMeth__ functions in _methylKit_ library. Please follow [this link](https://github.com/RobertSellers/R_mm10AA/blob/master/scripts/custom_functions.R) to view the function contents.
+
+Input parameters are the 1. Window Size, 2. Step Size, 3. Bases Covered, 4. difference, 5. q value.
+
+Also outputs text files and plots _methylKit's_ __diffMethPerChr__ output.
+
+```{r}
+tiles.male <- customWindowMethod(male.filt.norm, 500, 50, 5, 25, 0.01, gene.parts)
+tiles.female <- customWindowMethod(female.filt.norm, 500, 50, 5, 25, 0.01, gene.parts)
+tiles.all <- customWindowMethod(all.filt.norm, 500, 50, 5, 25, 0.01, gene.parts)
+```
+
+## Circos Idiogram
+
+```{r}
+#All
+ideoDMC(tiles.all$diffMeth, chr.len, difference = 25,qvalue = 0.01, 
+        title = "All Differential bases > 25%", hyper.col = "magenta",hypo.col = "green")
+
+#Male
+ideoDMC(tiles.male$diffMeth, chr.len, difference = 25, qvalue = 0.01, 
+        title = "Male Differential bases > 25%", hyper.col = "magenta",hypo.col = "green")
+
+#Female
+ideoDMC(tiles.female$diffMeth, chr.len, difference = 25, qvalue = 0.01, 
+        title = "Female Differential bases > 25%", hyper.col = "magenta",hypo.col = "green")
+
+```
+
+---
+## Heatmap
+
+Using __Heatmap__ function with the _ComplexHeatmap_ package, we can display the heatmap of selected methylation regions. Please follow [this link](https://github.com/RobertSellers/R_mm10AA/blob/master/scripts/custom_functions.R) to view the function contents.
+
+```{r}
+
+#Merge and create lookup gene values
+df.gene.interval.anno <- cbind(tiles.all$gene.lookup, tiles.all$diffMeth.percent)
+names(refGenome)[names(refGenome) == 'V2'] <- 'feature.name'
+names(refGenome)[names(refGenome) == 'V13'] <- 'geneSymbol'
+df.gene.interval.anno.joined <- left_join(df.gene.interval.anno, refGenome[ , c("feature.name", "geneSymbol")], by = "feature.name", all.x = TRUE)
+
+#Merge data types and create a summary list. Diff meth might be incorrect. CHECK!
+minJoin <- aggregate(start ~ geneSymbol + feature.name + chr, df.gene.interval.anno.joined, min)
+maxJoin <- aggregate(end ~ geneSymbol + feature.name + chr, df.gene.interval.anno.joined, max)
+meanDiffJoin <- aggregate(meth.diff ~ geneSymbol, df.gene.interval.anno.joined, FUN = mean)
+distFeatJoin <- aggregate(dist.to.feature ~ geneSymbol, df.gene.interval.anno.joined, min)
+lookup.tile.ranges <- merge(minJoin, maxJoin)
+lookup.tile.ranges.Diff <- merge(lookup.tile.ranges, meanDiffJoin)
+lookup.tile.ranges.Diff.dist <- merge(lookup.tile.ranges.Diff, distFeatJoin)
+formergeSummary <- tibble::rownames_to_column(lookup.tile.ranges.Diff.dist, "geneIndex")
+
+gr0 = with(all.filt.norm.meth, GRanges(chr, IRanges(start, end)))
+gr1 = with(lookup.tile.ranges, GRanges(chr, IRanges(start, end)))
+hits = findOverlaps(gr0, gr1)
+
+hits.df<-as.data.frame(cbind(queryHits(hits),subjectHits(hits)))
+colnames(hits.df) <- c("index","geneIndex")
+formerge <- tibble::rownames_to_column(all.filt.norm.meth, "index")
+
+
+hits.df.filled <- data.frame(
+  index = formerge$index,
+  sample1 = formerge$numCs1/formerge$coverage1,
+  sample2 = formerge$numCs2/formerge$coverage2,
+  sample3 = formerge$numCs3/formerge$coverage3,
+  sample4 = formerge$numCs4/formerge$coverage4,
+  sample5 = formerge$numCs5/formerge$coverage5,
+  sample6 = formerge$numCs6/formerge$coverage6,
+  sample7 = formerge$numCs7/formerge$coverage7,
+  sample8 = formerge$numCs8/formerge$coverage8,
+  sample9 = formerge$numCs9/formerge$coverage9,
+  sample10 = formerge$numCs10/formerge$coverage10,
+  sample11 = formerge$numCs11/formerge$coverage11,
+  sample12 = formerge$numCs12/formerge$coverage12
+  )
+
+hits.df.merged<-merge(hits.df, y = hits.df.filled, by = "index", all.x = TRUE)
+
+hits.df.merged.avg<-hits.df.merged %>%
+  group_by(geneIndex) %>%
+  summarise_all(funs(mean(., na.rm = TRUE)))
+hits.df.merged.summary <- merge(hits.df.merged.avg, formergeSummary, by = "geneIndex", all.x = TRUE)
+######################################
+# generate methylation matrix
+mat_meth <- data.matrix(hits.df.merged.summary[2:ncol(hits.df.merged.avg)])[,-1]
+```
+
+```{r}
+res_list <- heatmapMatrixConstruction(mat_meth, plus.minus.all, lookup.tile.ranges)
+methylationHeatmap(res_list, "Methylation - All Samples")
+```
+
+---
+
+## Annotate CpGi control
+
+This needs an intervention
+
+```{r}
+#annotate CpGi control
+CpG.Cont.gRange = as(all.filt.norm.meth, "GRanges")
+CpGann.Cont = annotateWithFeatureFlank(CpG.Cont.gRange, cpg.obj$CpGi,
+                                      cpg.obj$shores,
+                                      feature.name = "CpGi",
+                                      flank.name = "shores")
+genomation::getTargetAnnotationStats(CpGann.Cont, percentage = TRUE, precedence = TRUE)
+genomation::plotTargetAnnotation(CpGann.Cont, precedence = TRUE, main = "CpGi 5mC (control)")
+
+#annotate genes control
+#Genes.Cont.gRange = as(meth[1], "GRanges")
+#Genes.Cont.gRange.annot = annotateWithGeneParts(Genes.Cont.gRange, gene.parts, intersect.chr = TRUE)
+#getTargetAnnotationStats(Genes.Cont.gRange.annot, percentage = TRUE,precedence = TRUE)
+#plotTargetAnnotation(Genes.Cont.gRange.annot, precedence = TRUE, main = "Gene 5mC (control)")
+
+
+```
+
+# Sources
+
+```{r}
+citation("ggbio")
+
+citEntry(
+   entry="article",
+   title = "Complex heatmaps reveal patterns and correlations in multidimensional genomic data",
+   author = personList(as.person("Zuguang Gu"),
+                       as.person("Roland Eils"),
+                       as.person("Matthias Schlesner")),
+   journal = "Bioinformatics",
+   year = 2016,
+   textVersion = "Gu, Z. (2016) Complex heatmaps reveal patterns and correlations in multidimensional genomic data. Bioinformatics."
+)
+
+citFooter("This free open-source software implements academic
+research by the authors and co-workers. If you use it,
+please support the project by citing the appropriate
+journal articles.")
+```
