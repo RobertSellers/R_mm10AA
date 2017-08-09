@@ -29,7 +29,7 @@ output:
 + [GenomicRanges](https://bioconductor.org/packages/release/bioc/html/GenomicRanges.html)
 
 ```{r message=FALSE, warning=FALSE, results='hide'}
-setwd("C:/Users/Robert/Desktop/R_mm10AA")
+#setwd("~/Desktop/R_mm10AA")
 source('scripts/environments.R'); loadWorkspace()
 source('scripts/visualizations.R')
 source('scripts/custom_functions.R')
@@ -255,8 +255,8 @@ Using __annotateWithGeneParts__, __getTargetAnnotationStats__, & __plotTargetAnn
 ```{r messages=FALSE, warnings=FALSE}
 par(mfrow=c(2,2))
 #25 & 50 male
-suppressWarnings(annotateRefSymbol(seqVals.male$diffs$diff25p, gene.parts, cpg.obj, 25))
-suppressWarnings(annotateRefSymbol(seqVals.male$diffs$diff25p, gene.parts, cpg.obj, 50))
+suppressWarnings(annotateRefSymbol(seqVals.male$diffs$diff25p, gene.parts, cpg.obj,25))
+suppressWarnings(annotateRefSymbol(seqVals.male$diffs$diff50p, gene.parts, cpg.obj,50))
 ```
 
 ### Female
@@ -265,7 +265,7 @@ suppressWarnings(annotateRefSymbol(seqVals.male$diffs$diff25p, gene.parts, cpg.o
 par(mfrow=c(2,2))
 #25 & 50 female
 suppressWarnings(annotateRefSymbol(seqVals.female$diffs$diff25p, gene.parts, cpg.obj, 25))
-suppressWarnings(annotateRefSymbol(seqVals.female$diffs$diff25p, gene.parts, cpg.obj, 50))
+suppressWarnings(annotateRefSymbol(seqVals.female$diffs$diff50p, gene.parts, cpg.obj, 50))
 ```
 
 ### All
@@ -273,8 +273,8 @@ suppressWarnings(annotateRefSymbol(seqVals.female$diffs$diff25p, gene.parts, cpg
 ```{r messages=FALSE, warnings=FALSE}
 par(mfrow=c(2,2))
 #25 & 50 all
-suppressWarnings(annotateRefSymbol(seqVals.all$diffs$diff25p, gene.parts, cpg.obj, 25))
-suppressWarnings(annotateRefSymbol(seqVals.all$diffs$diff25p, gene.parts, cpg.obj, 50))
+suppressWarnings(annotateRefSymbol(seqVals.all$diffs$diff25p, gene.parts, cpg.obj))
+suppressWarnings(annotateRefSymbol(seqVals.all$diffs$diff25p, gene.parts, cpg.obj))
 ```
 
 ---
@@ -367,37 +367,37 @@ hits.df.merged.summary <- merge(hits.df.merged.avg, formergeSummary, by = "geneI
 ######################################
 # generate methylation matrix
 mat_meth <- data.matrix(hits.df.merged.summary[2:ncol(hits.df.merged.avg)])[,-1]
+diffmat_meth <- data.matrix(hits.df.merged.summary$meth.diff)
+
 ```
 
 ```{r}
-res_list <- heatmapMatrixConstruction(mat_meth, plus.minus.all, lookup.tile.ranges)
-methylationHeatmap(res_list, "Methylation - All Samples")
+res_list <- heatmapMatrixConstruction(mat_meth, plus.minus.all, lookup.tile.ranges, TRUE)
+#res_list$direction <- heatmapMatrixConstruction(diffmat_meth, 1, lookup.tile.ranges, FALSE)
+colorRange <- c(0,0.5,1)
+res_list2 <- heatmapMatrixConstruction(diffmat_meth, 1, lookup.tile.ranges, FALSE)
+par(mfrow=c(1,2))
+colorRange <- c(0,0.5,1)
+colorRange2 <- c(25,32.5,40)
+ht_list = methylationHeatmap(res_list, "Methylation - All Samples", TRUE,colorRange)   +
+methylationHeatmap(res_list2, "Methylation - All Samples", FALSE, colorRange2)
+ht_list
 ```
 
----
-
-## Annotate CpGi control
-
-This needs an intervention
 
 ```{r}
-#annotate CpGi control
-CpG.Cont.gRange = as(all.filt.norm.meth, "GRanges")
-CpGann.Cont = annotateWithFeatureFlank(CpG.Cont.gRange, cpg.obj$CpGi,
-                                      cpg.obj$shores,
-                                      feature.name = "CpGi",
-                                      flank.name = "shores")
-genomation::getTargetAnnotationStats(CpGann.Cont, percentage = TRUE, precedence = TRUE)
-genomation::plotTargetAnnotation(CpGann.Cont, precedence = TRUE, main = "CpGi 5mC (control)")
+data = read.csv("bed/imprinted_dmr_test.csv")
 
-#annotate genes control
-#Genes.Cont.gRange = as(meth[1], "GRanges")
-#Genes.Cont.gRange.annot = annotateWithGeneParts(Genes.Cont.gRange, gene.parts, intersect.chr = TRUE)
-#getTargetAnnotationStats(Genes.Cont.gRange.annot, percentage = TRUE,precedence = TRUE)
-#plotTargetAnnotation(Genes.Cont.gRange.annot, precedence = TRUE, main = "Gene 5mC (control)")
+my.win <- GRanges(
+  seqnames = data$Chr,
+  ranges = IRanges(start = data$Start, width = data$Width))    
 
+all.regional.methylRaw = regionCounts(object = all.filt.norm.meth, regions = my.win, cov.bases = 0, strand.aware=FALSE)
+
+windiffmeth = calculateDiffMeth(all.regional.methylRaw)
 
 ```
+
 
 # Sources
 

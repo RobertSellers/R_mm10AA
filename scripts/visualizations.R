@@ -28,7 +28,7 @@ ideoDMC <- function(obj, chr.len, difference = 25, qvalue = 0.01, title = "test"
       label = seqnames), vjust = 0, radius = 55, trackWidth = 7) + labs(title = title)
 }
 
-heatmapMatrixConstruction <- function(mat_meth, plus.minus.all, lookup.tile.ranges){
+heatmapMatrixConstruction <- function(mat_meth, plus.minus.all, lookup.tile.ranges, cluster){
   colnames(mat_meth) = paste0("sample", 1:ncol(mat_meth))
 
   #type
@@ -69,11 +69,13 @@ heatmapMatrixConstruction <- function(mat_meth, plus.minus.all, lookup.tile.rang
   # res_list$anno_gene = anno_gene
   # res_list$dist = dist
   # res_list$anno_enhancer = anno_enhancer
-  res_list$column_tree = hclust(dist(t(mat_meth)))
+  if(cluster==TRUE){
+    res_list$column_tree = hclust(dist(t(mat_meth)))
+  }
   return (res_list)
 }
 
-methylationHeatmap <- function(res_list, title){
+methylationHeatmap <- function(res_list, title, cluster, range){
 
   ht_global_opt(RESET = TRUE)
 
@@ -82,16 +84,29 @@ methylationHeatmap <- function(res_list, title){
     )
 
   #MAIN 
-  Heatmap(
+
+  if(cluster==TRUE){
+     Heatmap(
         res_list$mat_meth, 
         name = "methylation", 
-        col = colorRamp2(c(0, 0.5, 1), c("blue", "white", "red")),
+        col = colorRamp2(c(range[1],range[2],range[3]), c("blue", "white", "red")),
         cluster_columns = res_list$column_tree, 
         column_dend_reorder = FALSE, 
         top_annotation = ha, 
         km = 5, 
         column_title = title, 
         column_title_gp = gpar(fontsize = 12)
-  )
+  ) 
+  }else{
+      Heatmap(
+        res_list$mat_meth, 
+        name = "methylation", 
+        col = colorRamp2(c(range[1],range[2],range[3]), c("blue", "white", "red")),
+        top_annotation = ha, 
+        km = 5, 
+        column_title = title, 
+        column_title_gp = gpar(fontsize = 12)
+    )
+  }
 
 }
