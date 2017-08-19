@@ -10,7 +10,7 @@ loadWorkspace <- function(){
 
     lapply(list.of.packages, require, character.only = TRUE)
 
-    list.of.packages <- c("genomation", "methylKit", "GenomicRanges", "ggbio", "RColorBrewer", "BSgenome.Mmusculus.UCSC.mm10.masked", "ComplexHeatmap")
+    list.of.packages <- c("genomation", "methylKit", "GenomicRanges", "ggbio", "RColorBrewer", "BSgenome.Mmusculus.UCSC.mm10.masked", "ComplexHeatmap", "compEpiTools")
 
     new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 

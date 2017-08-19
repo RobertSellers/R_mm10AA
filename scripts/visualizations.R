@@ -29,12 +29,12 @@ ideoDMC <- function(obj, chr.len, difference = 25, qvalue = 0.01, title = "test"
 }
 
 heatmapMatrixConstruction <- function(mat_meth, plus.minus.all, lookup.tile.ranges, cluster){
-  colnames(mat_meth) = paste0("sample", 1:ncol(mat_meth))
+ 
 
   #type
   type <- as.character(plus.minus.all)
-  type[grepl('0', type)] <- 'Experiment'
-  type[grepl('1', type)] <- 'Control'
+  type[grepl('1', type)] <- 'Experiment'
+  type[grepl('0', type)] <- 'Control'
 
   #gene_symbol
   gene_symbol <- (as.data.frame(lookup.tile.ranges[2:nrow(lookup.tile.ranges), 2]))
@@ -75,11 +75,12 @@ heatmapMatrixConstruction <- function(mat_meth, plus.minus.all, lookup.tile.rang
   return (res_list)
 }
 
-methylationHeatmap <- function(res_list, title, cluster, range){
+methylationHeatmap <- function(res_list, title, name, cluster, range){
 
   ht_global_opt(RESET = TRUE)
 
   ha = HeatmapAnnotation(df = data.frame(type = res_list$type), 
+                         
     col = list(type = c("Experiment" = "pink", "Control" = "royalblue"))
     )
 
@@ -88,24 +89,23 @@ methylationHeatmap <- function(res_list, title, cluster, range){
   if(cluster==TRUE){
      Heatmap(
         res_list$mat_meth, 
-        name = "methylation", 
+        name = name,
         col = colorRamp2(c(range[1],range[2],range[3]), c("blue", "white", "red")),
         cluster_columns = res_list$column_tree, 
         column_dend_reorder = FALSE, 
         top_annotation = ha, 
         km = 5, 
         column_title = title, 
-        column_title_gp = gpar(fontsize = 12)
+        column_title_gp = gpar(fontsize = 10)
   ) 
   }else{
       Heatmap(
         res_list$mat_meth, 
-        name = "methylation", 
+        name = name,
         col = colorRamp2(c(range[1],range[2],range[3]), c("blue", "white", "red")),
-        top_annotation = ha, 
         km = 5, 
         column_title = title, 
-        column_title_gp = gpar(fontsize = 12)
+        column_title_gp = gpar(fontsize = 10)
     )
   }
 

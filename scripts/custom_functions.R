@@ -4,12 +4,12 @@ annotateRefSymbol <- function(x, gene.parts, cpg.obj, pct){
     gRange <- as(x,"GRanges")
     gRange.annot = genomation::annotateWithGeneParts(gRange, gene.parts, intersect.chr = TRUE)
     genomation::getTargetAnnotationStats(gRange.annot, percentage = TRUE, precedence = TRUE)
-    genomation::plotTargetAnnotation(gRange.annot, precedence = TRUE, main = paste("Differential Methylation Annotation", pct, "%"))
+    genomation::plotTargetAnnotation(gRange.annot, precedence = TRUE, main = paste("Differential Methylation Annotation", pct, "%"), col = topo.colors(4), cex.legend = 0.5)
 
     #cpg islands
     gRange.cpg <- genomation::annotateWithFeatureFlank(gRange, cpg.obj$CpGi, cpg.obj$shores, feature.name = "CpGi", flank.name = "shores")
     genomation::getTargetAnnotationStats(gRange.cpg, percentage = TRUE, precedence = TRUE)
-    genomation::plotTargetAnnotation(gRange.cpg, precedence = TRUE, main = paste("Differential Methylation CpGi", pct, "%"))
+    genomation::plotTargetAnnotation(gRange.cpg, precedence = TRUE, main = paste("Differential Methylation CpGi", pct, "%"), col = topo.colors(3), cex.legend = 0.5)
 
 }
 

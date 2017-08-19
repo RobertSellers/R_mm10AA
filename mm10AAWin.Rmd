@@ -29,7 +29,7 @@ output:
 + [GenomicRanges](https://bioconductor.org/packages/release/bioc/html/GenomicRanges.html)
 
 ```{r message=FALSE, warning=FALSE, results='hide'}
-#setwd("~/Desktop/R_mm10AA")
+#setwd("~/Desktop/R_mm10AA copy")
 source('scripts/environments.R'); loadWorkspace()
 source('scripts/visualizations.R')
 source('scripts/custom_functions.R')
@@ -257,12 +257,13 @@ par(mfrow=c(2,2))
 #25 & 50 male
 suppressWarnings(annotateRefSymbol(seqVals.male$diffs$diff25p, gene.parts, cpg.obj,25))
 suppressWarnings(annotateRefSymbol(seqVals.male$diffs$diff50p, gene.parts, cpg.obj,50))
+
 ```
 
 ### Female
 
 ```{r messages=FALSE, warnings=FALSE}
-par(mfrow=c(2,2))
+par(mfrow=c(2, 2))
 #25 & 50 female
 suppressWarnings(annotateRefSymbol(seqVals.female$diffs$diff25p, gene.parts, cpg.obj, 25))
 suppressWarnings(annotateRefSymbol(seqVals.female$diffs$diff50p, gene.parts, cpg.obj, 50))
@@ -273,8 +274,10 @@ suppressWarnings(annotateRefSymbol(seqVals.female$diffs$diff50p, gene.parts, cpg
 ```{r messages=FALSE, warnings=FALSE}
 par(mfrow=c(2,2))
 #25 & 50 all
-suppressWarnings(annotateRefSymbol(seqVals.all$diffs$diff25p, gene.parts, cpg.obj))
-suppressWarnings(annotateRefSymbol(seqVals.all$diffs$diff25p, gene.parts, cpg.obj))
+suppressWarnings(annotateRefSymbol(seqVals.all$diffs$diff25p, gene.parts, cpg.obj, 25))
+suppressWarnings(annotateRefSymbol(seqVals.all$diffs$diff50p, gene.parts, cpg.obj, 50))
+
+suppressWarnings(annotateRefSymbol(seqVals.all$diff, gene.parts, cpg.obj, 0))
 ```
 
 ---
@@ -288,10 +291,115 @@ Input parameters are the 1. Window Size, 2. Step Size, 3. Bases Covered, 4. diff
 Also outputs text files and plots _methylKit's_ __diffMethPerChr__ output.
 
 ```{r}
-tiles.male <- customWindowMethod(male.filt.norm, 500, 50, 5, 25, 0.01, gene.parts)
-tiles.female <- customWindowMethod(female.filt.norm, 500, 50, 5, 25, 0.01, gene.parts)
-tiles.all <- customWindowMethod(all.filt.norm, 500, 50, 5, 25, 0.01, gene.parts)
+# For example
+# access the getMethyLDiff result with tiles.male$diffMeth.percent
+tiles.male <- customWindowMethod(male.filt.norm, winSize = 500, stepSize = 50, bases = 5, diff = 25, q = 0.01, gene.parts)
+tiles.female <- customWindowMethod(male.filt.norm, winSize = 500, stepSize = 50, bases = 5, diff = 25, q = 0.01, gene.parts)
+tiles.all <- customWindowMethod(male.filt.norm, winSize = 500, stepSize = 50, bases = 5, diff = 25, q = 0.01, gene.parts)
 ```
+
+
+# Make lookup tables
+```{r}
+
+#Merge and create lookup gene values
+df.gene.interval.anno <- cbind(tiles.all$gene.lookup, tiles.all$diffMeth.percent)
+names(refGenome)[names(refGenome) == 'V2'] <- 'feature.name'
+names(refGenome)[names(refGenome) == 'V13'] <- 'geneSymbol'
+df.gene.interval.anno.joined <- left_join(df.gene.interval.anno, refGenome[ , c("feature.name", "geneSymbol")], by = "feature.name", all.x = TRUE)
+
+#Merge data types and create a summary list. Diff meth might be incorrect. CHECK!
+minJoin <- aggregate(start ~ geneSymbol + feature.name + chr, df.gene.interval.anno.joined, min)
+maxJoin <- aggregate(end ~ geneSymbol + feature.name + chr, df.gene.interval.anno.joined, max)
+meanDiffJoin <- aggregate(meth.diff ~ geneSymbol, df.gene.interval.anno.joined, FUN = mean)
+distFeatJoin <- aggregate(dist.to.feature ~ geneSymbol, df.gene.interval.anno.joined, min)
+lookup.tile.ranges <- merge(minJoin, maxJoin)
+lookup.tile.ranges.Diff <- merge(lookup.tile.ranges, meanDiffJoin)
+lookup.tile.ranges.Diff.dist <- merge(lookup.tile.ranges.Diff, distFeatJoin)
+
+gr.hits = with(lookup.tile.ranges, GRanges(chr, IRanges(start, end)))
+```
+
+#Merge and trim windows
+##this needs figuring out - the numbers don't quite make sense
+```{r}
+
+#calculate windows again
+# %CpG methylation per region
+my.win.tile25p.gr <- GRanges(
+  seqnames = lookup.tile.ranges$chr,
+  ranges = IRanges(start = lookup.tile.ranges$start, end = lookup.tile.ranges$end))
+my.win.tile.25p.methylRaw = regionCounts(object = all.filt.norm, regions = my.win.tile25p.gr, cov.bases = 0, strand.aware=TRUE)
+my.win.tile.25p.unite = unite(my.win.tile.25p.methylRaw)
+# Diff meth
+my.win.tile.25p.diff.meth <- calculateDiffMeth(my.win.tile.25p.unite)
+# % CpG methylation
+
+
+```
+
+```{r}
+
+# histone stuff
+
+file.list <- c( "bed/H3K4me1.bed", "bed/H3K9me3.bed", "bed/H3K4me2.bed", "bed/H3K4me3.bed", "bed/H3K9ac.bed", "bed/H3K27ac.bed", "bed/H3K27me3.bed", "bed/H3K36me3.bed")
+
+histone.intersections <- list()
+gr2 <- makeGRangesFromDataFrame(lookup.tile.ranges)
+
+for (i in 1:length(file.list))
+{
+  histoneMarks <- read.table(file.list[i])
+  colnames(histoneMarks) <- c('chr', 'start', 'end', 'name', 'score','strand', "signalValue", "pValue", "qValue", "peak")
+  GRi <- makeGRangesFromDataFrame(histoneMarks)
+  histone.intersections[i] <- intersect(GRi, gr2, ignore.strand = TRUE)
+}
+#print(histone.intersections)
+
+H3K4me1.tile <- makeGRangesFromDataFrame(histone.intersections[1])
+H3K9me3.tile <- histone.intersections[2]
+H3K4me2.tile <- histone.intersections[3]
+H3K4me3.tile <- histone.intersections[4]
+H3K9ac.tile <- histone.intersections[5]
+H3K27ac.tile <- histone.intersections[6]
+H3K27me3.tile <- histone.intersections[7]
+H3K36me3.tile <- histone.intersections[8]
+
+#find overlaps with histone modifications
+hits.H3K4me3 = suppressWarnings(findOverlaps(gr.hits, H3K4me1.tile, type = c("within")))
+hits.H3K4me3.df = as.data.frame(hits.H3K4me3)
+hits.with.H3K4me3.df <- as.data.frame(gr.hits[hits.H3K4me3.df$queryHits])
+colnames(hits.with.H3K4me3.df)[4] <- "H3K4me3"
+colnames(hits.with.H3K4me3.df)[1] <- "chr"
+hits.with.H3K4me3.lookup <- plyr::join(lookup.tile.ranges.Diff.dist, hits.with.H3K4me3.df, by = c("chr", "start", "end"))
+
+```
+
+
+```{r}
+
+#find overlaps with CpGi
+cpg.gr = makeGRangesFromDataFrame(cpg.obj)
+hits.cpg.overlaps = suppressWarnings(findOverlaps(gr.hits, cpg.gr, type = c("within")))
+hits.cpg.overlaps.df <- as.data.frame(hits.cpg.overlaps)
+hits.with.cpgi.df <- as.data.frame(gr.hits[hits.cpg.overlaps.df$queryHits])
+colnames(hits.with.cpgi.df)[1] <- "chr"
+hits.with.cpgi.unique = hits.with.cpgi.df[!duplicated(hits.with.cpgi.df), ]
+colnames(hits.with.cpgi.unique)[4] <- "CpGi"
+hits.with.cpgi.lookup <- plyr::join(lookup.tile.ranges.Diff.dist, hits.with.cpgi.unique, by = c("chr", "start", "end"))
+hits.with.cpgi.lookup[["CpGi"]][is.na(hits.with.cpgi.lookup[["CpGi"]])] <- 0
+
+```
+
+### Window annotation (all)
+
+```{r messages=FALSE, warnings=FALSE}
+#par(mfrow=c(2,2))
+#25 & 50 all
+
+#suppressWarnings(annotateRefSymbol(tiles.all$diffMeth, gene.parts, cpg.obj, 25))
+```
+
 
 ## Circos Idiogram
 
@@ -316,22 +424,8 @@ ideoDMC(tiles.female$diffMeth, chr.len, difference = 25, qvalue = 0.01,
 Using __Heatmap__ function with the _ComplexHeatmap_ package, we can display the heatmap of selected methylation regions. Please follow [this link](https://github.com/RobertSellers/R_mm10AA/blob/master/scripts/custom_functions.R) to view the function contents.
 
 ```{r}
-
-#Merge and create lookup gene values
-df.gene.interval.anno <- cbind(tiles.all$gene.lookup, tiles.all$diffMeth.percent)
-names(refGenome)[names(refGenome) == 'V2'] <- 'feature.name'
-names(refGenome)[names(refGenome) == 'V13'] <- 'geneSymbol'
-df.gene.interval.anno.joined <- left_join(df.gene.interval.anno, refGenome[ , c("feature.name", "geneSymbol")], by = "feature.name", all.x = TRUE)
-
-#Merge data types and create a summary list. Diff meth might be incorrect. CHECK!
-minJoin <- aggregate(start ~ geneSymbol + feature.name + chr, df.gene.interval.anno.joined, min)
-maxJoin <- aggregate(end ~ geneSymbol + feature.name + chr, df.gene.interval.anno.joined, max)
-meanDiffJoin <- aggregate(meth.diff ~ geneSymbol, df.gene.interval.anno.joined, FUN = mean)
-distFeatJoin <- aggregate(dist.to.feature ~ geneSymbol, df.gene.interval.anno.joined, min)
-lookup.tile.ranges <- merge(minJoin, maxJoin)
-lookup.tile.ranges.Diff <- merge(lookup.tile.ranges, meanDiffJoin)
-lookup.tile.ranges.Diff.dist <- merge(lookup.tile.ranges.Diff, distFeatJoin)
-formergeSummary <- tibble::rownames_to_column(lookup.tile.ranges.Diff.dist, "geneIndex")
+# make summary table
+hits.with.cpgi.lookup$geneIndex <- row.names(hits.with.cpgi.lookup)
 
 gr0 = with(all.filt.norm.meth, GRanges(chr, IRanges(start, end)))
 gr1 = with(lookup.tile.ranges, GRanges(chr, IRanges(start, end)))
@@ -339,23 +433,22 @@ hits = findOverlaps(gr0, gr1)
 
 hits.df<-as.data.frame(cbind(queryHits(hits),subjectHits(hits)))
 colnames(hits.df) <- c("index","geneIndex")
-formerge <- tibble::rownames_to_column(all.filt.norm.meth, "index")
-
+all.filt.norm.meth$index <- row.names(all.filt.norm.meth)
 
 hits.df.filled <- data.frame(
-  index = formerge$index,
-  sample1 = formerge$numCs1/formerge$coverage1,
-  sample2 = formerge$numCs2/formerge$coverage2,
-  sample3 = formerge$numCs3/formerge$coverage3,
-  sample4 = formerge$numCs4/formerge$coverage4,
-  sample5 = formerge$numCs5/formerge$coverage5,
-  sample6 = formerge$numCs6/formerge$coverage6,
-  sample7 = formerge$numCs7/formerge$coverage7,
-  sample8 = formerge$numCs8/formerge$coverage8,
-  sample9 = formerge$numCs9/formerge$coverage9,
-  sample10 = formerge$numCs10/formerge$coverage10,
-  sample11 = formerge$numCs11/formerge$coverage11,
-  sample12 = formerge$numCs12/formerge$coverage12
+  index = all.filt.norm.meth$index,
+  sample1 = all.filt.norm.meth$numCs1/all.filt.norm.meth$coverage1,
+  sample2 = all.filt.norm.meth$numCs2/all.filt.norm.meth$coverage2,
+  sample3 = all.filt.norm.meth$numCs3/all.filt.norm.meth$coverage3,
+  sample4 = all.filt.norm.meth$numCs4/all.filt.norm.meth$coverage4,
+  sample5 = all.filt.norm.meth$numCs5/all.filt.norm.meth$coverage5,
+  sample6 = all.filt.norm.meth$numCs6/all.filt.norm.meth$coverage6,
+  sample7 = all.filt.norm.meth$numCs7/all.filt.norm.meth$coverage7,
+  sample8 = all.filt.norm.meth$numCs8/all.filt.norm.meth$coverage8,
+  sample9 = all.filt.norm.meth$numCs9/all.filt.norm.meth$coverage9,
+  sample10 = all.filt.norm.meth$numCs10/all.filt.norm.meth$coverage10,
+  sample11 = all.filt.norm.meth$numCs11/all.filt.norm.meth$coverage11,
+  sample12 = all.filt.norm.meth$numCs12/all.filt.norm.meth$coverage12
   )
 
 hits.df.merged<-merge(hits.df, y = hits.df.filled, by = "index", all.x = TRUE)
@@ -363,38 +456,47 @@ hits.df.merged<-merge(hits.df, y = hits.df.filled, by = "index", all.x = TRUE)
 hits.df.merged.avg<-hits.df.merged %>%
   group_by(geneIndex) %>%
   summarise_all(funs(mean(., na.rm = TRUE)))
-hits.df.merged.summary <- merge(hits.df.merged.avg, formergeSummary, by = "geneIndex", all.x = TRUE)
+hits.df.merged.summary <- merge(hits.df.merged.avg, hits.with.cpgi.lookup, by = "geneIndex", all.x = TRUE)
 ######################################
 # generate methylation matrix
 mat_meth <- data.matrix(hits.df.merged.summary[2:ncol(hits.df.merged.avg)])[,-1]
 diffmat_meth <- data.matrix(hits.df.merged.summary$meth.diff)
-
+distmat_meth <- data.matrix(hits.df.merged.summary$dist.to.feature)
+CpGimat_meth <- data.matrix(hits.df.merged.summary$CpGi)
+rownames(CpGimat_meth) = data.matrix(hits.df.merged.summary$geneSymbol)
 ```
+
 
 ```{r}
 res_list <- heatmapMatrixConstruction(mat_meth, plus.minus.all, lookup.tile.ranges, TRUE)
-#res_list$direction <- heatmapMatrixConstruction(diffmat_meth, 1, lookup.tile.ranges, FALSE)
-colorRange <- c(0,0.5,1)
 res_list2 <- heatmapMatrixConstruction(diffmat_meth, 1, lookup.tile.ranges, FALSE)
+res_list3 <- heatmapMatrixConstruction(distmat_meth, 1, lookup.tile.ranges, FALSE)
+res_list4 <- heatmapMatrixConstruction(CpGimat_meth, 1, lookup.tile.ranges, FALSE)
+
 par(mfrow=c(1,2))
 colorRange <- c(0,0.5,1)
 colorRange2 <- c(25,32.5,40)
-ht_list = methylationHeatmap(res_list, "Methylation - All Samples", TRUE,colorRange)   +
-methylationHeatmap(res_list2, "Methylation - All Samples", FALSE, colorRange2)
+colorRange3 <- c(-156000,-19000,118000)
+colorRange4 <- c(-2, 0, 2)
+
+#heatmap_legend_param = list(title = "Heatmap2", title_gp = gpar(fontsize = 8), labels_gp = gpar(fontsize = 14), row_names_gp = gpar(fontsize = 10))
+
+ht_list = methylationHeatmap(res_list, "Methylation - All Samples", "% CpG methylation", TRUE, colorRange)   +
+methylationHeatmap(res_list2, "", "%Diff methylation", FALSE, colorRange2) + methylationHeatmap(res_list3, "", "Distance to TSS", FALSE, colorRange3) + methylationHeatmap(res_list4, "", "CpGi", FALSE, colorRange4)
 ht_list
 ```
 
 
 ```{r}
-data = read.csv("bed/imprinted_dmr_test.csv")
+#iDMR.data = read.csv("bed/imprinted_dmr_test.csv")
 
-my.win <- GRanges(
-  seqnames = data$Chr,
-  ranges = IRanges(start = data$Start, width = data$Width))    
+#my.win <- GRanges(
+#  seqnames = iDMR.data$Chr,
+#  ranges = IRanges(start = iDMR.data$Start, width = iDMR.data$Width))    
 
-all.regional.methylRaw = regionCounts(object = all.filt.norm.meth, regions = my.win, cov.bases = 0, strand.aware=FALSE)
+#all.regional.methylRaw = regionCounts(object = all.filt.norm.meth, regions = my.win, cov.bases = 0, strand.aware=FALSE)
 
-windiffmeth = calculateDiffMeth(all.regional.methylRaw)
+#windiffmeth = calculateDiffMeth(all.regional.methylRaw)
 
 ```
 
@@ -402,21 +504,22 @@ windiffmeth = calculateDiffMeth(all.regional.methylRaw)
 # Sources
 
 ```{r}
-citation("ggbio")
-
-citEntry(
-   entry="article",
-   title = "Complex heatmaps reveal patterns and correlations in multidimensional genomic data",
-   author = personList(as.person("Zuguang Gu"),
-                       as.person("Roland Eils"),
-                       as.person("Matthias Schlesner")),
-   journal = "Bioinformatics",
-   year = 2016,
-   textVersion = "Gu, Z. (2016) Complex heatmaps reveal patterns and correlations in multidimensional genomic data. Bioinformatics."
-)
-
-citFooter("This free open-source software implements academic
-research by the authors and co-workers. If you use it,
-please support the project by citing the appropriate
-journal articles.")
+# citation("org.Mmu.eg.db")
+# citation("ggbio")
+# 
+# citEntry(
+#    entry="article",
+#    title = "Complex heatmaps reveal patterns and correlations in multidimensional genomic data",
+#    author = personList(as.person("Zuguang Gu"),
+#                        as.person("Roland Eils"),
+#                        as.person("Matthias Schlesner")),
+#    journal = "Bioinformatics",
+#    year = 2016,
+#    textVersion = "Gu, Z. (2016) Complex heatmaps reveal patterns and correlations in multidimensional genomic data. Bioinformatics."
+# )
+# 
+# citFooter("This free open-source software implements academic
+# research by the authors and co-workers. If you use it,
+# please support the project by citing the appropriate
+# journal articles.")
 ```
